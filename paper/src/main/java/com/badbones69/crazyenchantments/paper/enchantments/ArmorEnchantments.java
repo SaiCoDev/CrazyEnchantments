@@ -25,7 +25,6 @@ import com.ryderbelserion.fusion.paper.builders.folia.FoliaScheduler;
 import io.papermc.paper.event.entity.EntityEquipmentChangedEvent;
 import io.papermc.paper.persistence.PersistentDataContainerView;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.attribute.Attribute;
@@ -42,13 +41,16 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 import org.bukkit.event.entity.EntityResurrectEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.jetbrains.annotations.NotNull;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -86,6 +88,10 @@ public class ArmorEnchantments implements Listener {
 
     private final ArmorProcessor armorProcessor = new ArmorProcessor();
 
+    private final Set<PotionEffectType> managedEffectTypes = this.crazyManager.getEnchantmentPotions().values().stream()
+            .flatMap(effects -> effects.keySet().stream())
+            .collect(Collectors.toUnmodifiableSet());
+
     private final List<UUID> fallenPlayers = new ArrayList<>();
 
     public ArmorEnchantments() {
@@ -97,16 +103,62 @@ public class ArmorEnchantments implements Listener {
     }
 
     @EventHandler
-    public void onDeath(EntityResurrectEvent event) {
+    public void onResurrect(EntityResurrectEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
-        ItemStack air = new ItemStack(Material.AIR);
 
         new FoliaScheduler(this.plugin, null, player) {
             @Override
             public void run() {
-                updateEffects(player, air, air);
+                reconcileEffects(player);
             }
         }.runDelayed(10);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onJoin(PlayerJoinEvent event) {
+        final Player player = event.getPlayer();
+
+        new FoliaScheduler(this.plugin, null, player) {
+            @Override
+            public void run() {
+                reconcileEffects(player);
+            }
+        }.runDelayed(30);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onRespawn(PlayerRespawnEvent event) {
+        final Player player = event.getPlayer();
+
+        new FoliaScheduler(this.plugin, null, player) {
+            @Override
+            public void run() {
+                reconcileEffects(player);
+            }
+        }.runDelayed(5);
+    }
+
+    public void reconcileEffects(@NotNull Player player) {
+        final Map<PotionEffectType, Integer> justified = getTopPotionEffects(getUpperEnchants(player));
+
+        for (final PotionEffect active : player.getActivePotionEffects()) {
+            final PotionEffectType type = active.getType();
+
+            if (!this.managedEffectTypes.contains(type)) continue;
+            if (!active.isInfinite()) continue;
+            if (justified.containsKey(type)) continue;
+
+            player.removePotionEffect(type);
+        }
+
+        for (final Map.Entry<PotionEffectType, Integer> effect : justified.entrySet()) {
+            final int amplifier = effect.getValue() - 1;
+            final PotionEffect current = player.getPotionEffect(effect.getKey());
+            if (current != null && current.isInfinite() && current.getAmplifier() >= amplifier) continue;
+
+            player.removePotionEffect(effect.getKey());
+            player.addPotionEffect(new PotionEffect(effect.getKey(), -1, amplifier));
+        }
     }
 
     @EventHandler
