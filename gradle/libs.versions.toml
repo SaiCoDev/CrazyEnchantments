@@ -164,7 +164,7 @@ shared = [
     "craftengine-bukkit",
     "craftengine-core",
 
-    "itemsadder",
+    #"itemsadder", # TEMP: disabled while maven.devs.beer is down (522). Unused in source.
     "hmcwraps",
     "oraxen",
     "nexo"

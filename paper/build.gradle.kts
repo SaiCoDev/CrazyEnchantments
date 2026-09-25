@@ -57,7 +57,8 @@ repositories {
 
     maven("https://repo.oraxen.com/releases/")
 
-    maven("https://maven.devs.beer/")
+    // TEMP: ItemsAdder repo disabled while maven.devs.beer is down (522). API is unused in source anyway.
+    // maven("https://maven.devs.beer/")
 }
 
 dependencies {
